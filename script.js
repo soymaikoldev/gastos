@@ -14,6 +14,31 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&am
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
 const money = n => "$" + (Math.round(n * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/* ---------- íconos de línea (lucide, inline para offline) ---------- */
+const ICONS = {
+  "utensils": '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
+  "bus": '<path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>',
+  "shopping-cart": '<path d="m2.05 2.05 1.099-.028a1 1 0 0 1 1.008.815l2.69 14.347A1 1 0 0 0 7.83 18H18"/><path d="M4.563 5h16.435a1 1 0 0 1 .981 1.204l-1.026 6.226A2 2 0 0 1 18.962 14H6.25"/><circle cx="18" cy="20" r="2"/><circle cx="8" cy="20" r="2"/>',
+  "cookie": '<path d="M11 17h.01"/><path d="M11.496 2c.324-.016.558.292.529.615a4 4 0 0 0 4.235 4.368.713.713 0 0 1 .758.757 4 4 0 0 0 4.366 4.237c.323-.03.63.204.614.527a10 10 0 0 1-2.915 6.566A1 1 0 1 1 4.93 4.918 10 10 0 0 1 11.496 2"/><path d="M12 12h.01"/><path d="M16 16h.01"/><path d="M16 3h.01"/><path d="M21 4h.01"/><path d="M21 8h.01"/><path d="M7 14h.01"/><path d="M9 8h.01"/>',
+  "smartphone": '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  "pill": '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/>',
+  "house": '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  "shapes": '<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/>',
+  "bug": '<path d="M12 20v-9"/><path d="M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z"/><path d="M14.12 3.88 16 2"/><path d="M21 21a4 4 0 0 0-3.81-4"/><path d="M21 5a4 4 0 0 1-3.55 3.97"/><path d="M22 13h-4"/><path d="M3 21a4 4 0 0 1 3.81-4"/><path d="M3 5a4 4 0 0 0 3.55 3.97"/><path d="M6 13H2"/><path d="m8 2 1.88 1.88"/><path d="M9 7.13V6a3 3 0 1 1 6 0v1.13"/>',
+  "star": '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+  "rotate-cw": '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  "chevron-left": '<path d="m15 18-6-6 6-6"/>',
+  "chevron-right": '<path d="m9 18 6-6-6-6"/>',
+  "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  "delete": '<path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/>',
+  "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  "moon": '<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>',
+  "tag": '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>'
+};
+const ic = (n, cls = "") => `<svg class="ico ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ICONS.tag}</svg>`;
+const CAT_ICON = { comida: "utensils", transporte: "bus", mercado: "shopping-cart", antojos: "cookie", datos: "smartphone", salud: "pill", casa: "house", otros: "shapes" };
+const catIco = id => ic(CAT_ICON[id] || "tag", "mut");
+
 let token = ls.get("hub.token");
 let data = null, sha = null, saveTimer = null, saving = false, dirty = false;
 let curSel = ls.get("gastos.lastCur") || "Bs";
@@ -215,8 +240,8 @@ function render() {
   let fuga = "";
   if (rows.length) {
     const horm = [...rows].filter(r => r.n >= 3 && r.t / r.n <= 5).sort((a, b) => b.n - a.n)[0];
-    if (horm) { const c = catOf(horm.id); fuga = `🐜 <b>Gasto hormiga en ${c.emoji} ${esc(c.label)}.</b> ${horm.n} compras chiquitas suman <b>${money(horm.t)}</b> este mes. Esa plata se te escurre sin que la sientas.`; }
-    else { const c = catOf(rows[0].id); fuga = `Por donde más se te va: ${c.emoji} <b>${esc(c.label)}</b>, ${money(rows[0].t)} este mes.`; }
+    if (horm) { const c = catOf(horm.id); fuga = `${ic("bug", "leak")} <b>Gasto hormiga en ${esc(c.label)}.</b> ${horm.n} compras chiquitas suman <b>${money(horm.t)}</b> este mes. Esa plata se te escurre sin que la sientas.`; }
+    else { const c = catOf(rows[0].id); fuga = `Por donde más se te va: <b>${esc(c.label)}</b>, ${money(rows[0].t)} este mes.`; }
   }
 
   // rápidos
@@ -225,17 +250,17 @@ function render() {
       const c = catOf(q.cat);
       const amt = q.cur === "USD" ? money(q.amt) : q.amt.toLocaleString("es-VE") + " Bs";
       const lab = q.note || c.label;
-      return `<span class="q" data-q="${esc(q.id)}">${c.emoji} ${esc(lab)} ${amt}${qManage ? `<b class="qx" data-qx="${esc(q.id)}">✕</b>` : ""}</span>`;
+      return `<span class="q" data-q="${esc(q.id)}">${catIco(q.cat)} ${esc(lab)} ${amt}${qManage ? `<b class="qx" data-qx="${esc(q.id)}">${ic("x")}</b>` : ""}</span>`;
     }).join("")}
-    <button class="q-edit" id="q-edit" type="button" title="${qManage ? "Listo" : "Editar rápidos"}">${qManage ? "✓" : "✎"}</button>
+    <button class="q-edit" id="q-edit" type="button">${qManage ? "listo" : "editar"}</button>
   </div>` : "";
 
-  const catChips = data.cats.map(c => `<span class="cat ${catSel === c.id ? "on" : ""}" data-cat="${esc(c.id)}">${c.emoji} ${esc(c.label)}</span>`).join("");
-  const keysHtml = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"].map(k => `<button class="key${k === "⌫" ? " back" : ""}" data-k="${k}" type="button">${k}</button>`).join("");
+  const catChips = data.cats.map(c => `<span class="cat ${catSel === c.id ? "on" : ""}" data-cat="${esc(c.id)}">${catIco(c.id)} ${esc(c.label)}</span>`).join("");
+  const keysHtml = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"].map(k => `<button class="key${k === "⌫" ? " back" : ""}" data-k="${k}" type="button">${k === "⌫" ? ic("delete") : k}</button>`).join("");
 
   const breakHtml = rows.length ? rows.map(r => {
     const c = catOf(r.id);
-    return `<div class="lrow"><div class="lab">${c.emoji} ${esc(c.label)} <span class="cnt">${r.n} ${r.n === 1 ? "vez" : "veces"}</span></div>
+    return `<div class="lrow"><div class="lab">${catIco(c.id)} ${esc(c.label)} <span class="cnt">${r.n} ${r.n === 1 ? "vez" : "veces"}</span></div>
       <div class="val">${money(r.t)}</div><div class="bar"><i style="width:${Math.max(4, r.t / max * 100)}%"></i></div></div>`;
   }).join("") : `<div class="empty">Nada este mes todavía. Marca tu primer gasto arriba.</div>`;
 
@@ -251,7 +276,7 @@ function render() {
     <div class="top">
       <div class="brandmark">mis <em>gastos</em></div>
       <div class="top-actions"><span class="sync-note" id="syncnote"><span class="dot"></span></span>
-        <button class="chip-btn" id="tt" type="button" aria-label="Cambiar tema">☀</button></div>
+        <button class="chip-btn" id="tt" type="button" aria-label="Cambiar tema">${ic("sun")}</button></div>
     </div>
 
     <section class="register">
@@ -270,7 +295,7 @@ function render() {
       <div class="keypad">${keysHtml}</div>
       <div class="cap-actions">
         <button class="btn-primary" id="add" type="button">Anotar gasto</button>
-        <button class="btn-ghost star" id="save-quick" type="button" title="Guardar esto como gasto rápido" aria-label="Guardar como rápido">★</button>
+        <button class="btn-ghost star" id="save-quick" type="button" title="Guardar esto como gasto rápido" aria-label="Guardar como rápido">${ic("star")}</button>
       </div>
       <div class="add-hint" id="hint">Marca el monto, elige categoría y anota</div>
     </section>
@@ -299,7 +324,7 @@ function render() {
 
     <div class="foot">
       <div class="rate-wrap">Tasa <input class="rate-in" id="rate" inputmode="numeric" value="${data.rate}"> Bs/$
-        <button class="rate-refresh" id="rate-refresh" type="button" title="Actualizar tasa paralela">↻</button>
+        <button class="rate-refresh" id="rate-refresh" type="button" title="Actualizar tasa paralela" aria-label="Actualizar tasa">${ic("rotate-cw")}</button>
         <span class="rate-note" id="rate-note">${data.rateSrc === "auto" ? (data.rateFetched === TODAY ? "de hoy" : esc(data.rateFetched || "")) : "manual"}</span>
       </div>
       <a href="#" id="logout">Desconectar</a>
@@ -308,9 +333,9 @@ function render() {
 
   <dialog id="hist" class="hist">
     <div class="hist-head">
-      <button class="nav" id="h-prev" type="button" aria-label="Mes anterior">‹</button>
+      <button class="nav" id="h-prev" type="button" aria-label="Mes anterior">${ic("chevron-left")}</button>
       <h2 id="h-title">Historial</h2>
-      <button class="nav" id="h-next" type="button" aria-label="Mes siguiente">›</button>
+      <button class="nav" id="h-next" type="button" aria-label="Mes siguiente">${ic("chevron-right")}</button>
     </div>
     <div class="hist-sum" id="h-sum"></div>
     <div class="hist-body" id="h-body"></div>
@@ -329,17 +354,17 @@ function itemHtml(e, showDay) {
   const curCls = e.cur === "USD" ? "usd" : "bs";
   const orig = e.cur === "USD" ? money(e.amt) : e.amt.toLocaleString("es-VE") + " Bs";
   const sub = e.cur === "USD" ? "" : "≈ " + money(usd(e));
-  return `<div class="row"><span class="row-ic">${c.emoji}</span>
+  return `<div class="row"><span class="row-ic">${catIco(e.cat)}</span>
     <div class="row-mid"><div class="row-c">${esc(c.label)}${showDay ? `<span class="row-day">${dayName(e.d)}</span>` : ""}</div>${e.note ? `<div class="row-n">${esc(e.note)}</div>` : ""}</div>
     <div class="row-amt ${curCls}">${orig}${sub ? `<span>${sub}</span>` : ""}</div>
-    <button class="row-del" data-del="${esc(e.id)}" title="Borrar">✕</button></div>`;
+    <button class="row-del" data-del="${esc(e.id)}" aria-label="Borrar">${ic("x")}</button></div>`;
 }
 
 /* ---------- interacción ---------- */
 function wire() {
   const btn = $("#tt");
   const cur = () => { const a = document.documentElement.getAttribute("data-theme"); return a || (matchMedia("(prefers-color-scheme:dark)").matches ? "dark" : "light"); };
-  const label = () => btn.textContent = cur() === "dark" ? "☾" : "☀";
+  const label = () => btn.innerHTML = cur() === "dark" ? ic("moon") : ic("sun");
   label();
   btn.onclick = () => { const n = cur() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); ls.set("gastos.theme", n); label(); };
 
@@ -379,7 +404,7 @@ function add() {
   data.expenses.unshift(e);
   resetAmt();
   save(); render();
-  toast("Anotado ✓");
+  toast("Gasto anotado");
 }
 
 function quickAdd(id) {
@@ -388,7 +413,7 @@ function quickAdd(id) {
   if (q.cur === "Bs") e.r = data.rate;
   data.expenses.unshift(e);
   save(); render();
-  toast(`${catOf(q.cat).emoji} ${q.note || catOf(q.cat).label} anotado ✓`, "Deshacer", () => { const i = data.expenses.findIndex(x => x.id === e.id); if (i >= 0) { data.expenses.splice(i, 1); save(); render(); } });
+  toast(`${esc(q.note || catOf(q.cat).label)} anotado`, "Deshacer", () => { const i = data.expenses.findIndex(x => x.id === e.id); if (i >= 0) { data.expenses.splice(i, 1); save(); render(); } });
 }
 
 function saveQuick() {
@@ -398,7 +423,7 @@ function saveQuick() {
   if (data.quick.length >= 8) { hint.textContent = "Ya tienes 8 rápidos (el máximo)"; hint.style.color = "var(--leak)"; return; }
   data.quick.push({ id: uid(), amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note });
   save(); render();
-  toast("Rápido guardado ★");
+  toast("Guardado como rápido");
 }
 function quickDel(id) {
   const i = data.quick.findIndex(x => x.id === id);
@@ -447,7 +472,7 @@ function renderHist() {
   const total = es.reduce((a, e) => a + usd(e), 0);
   const rows = breakdown(ym);
   $("#h-sum").innerHTML = `<div class="h-total">${money(total)} <span>· ${es.length} ${es.length === 1 ? "gasto" : "gastos"}</span></div>
-    ${rows.length ? `<div class="h-cats">${rows.slice(0, 4).map(r => { const c = catOf(r.id); return `<span>${c.emoji} ${money(r.t)}</span>`; }).join("")}</div>` : ""}`;
+    ${rows.length ? `<div class="h-cats">${rows.slice(0, 4).map(r => `<span>${catIco(r.id)} ${money(r.t)}</span>`).join("")}</div>` : ""}`;
   // agrupar por día
   const byDay = {};
   es.forEach(e => (byDay[e.d] = byDay[e.d] || []).push(e));
