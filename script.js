@@ -21,6 +21,40 @@ let catSel = ls.get("gastos.lastCat") || null;
 let lastDel = null;
 let qManage = false;   // modo gestionar rápidos
 let histMonth = null;  // mes abierto en el historial
+let amtStr = "0";      // monto que se arma con el teclado propio
+
+/* ---------- teclado / monto ---------- */
+const fmtInt = s => (s || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+function amtDispHtml() {
+  const [i, dec] = amtStr.split(".");
+  const num = dec !== undefined ? `${fmtInt(i)}<span class="dec">,${dec}</span>` : fmtInt(i);
+  return curSel === "USD" ? `<span class="cm">$</span>${num}` : `${num}<span class="cm"> Bs</span>`;
+}
+function convHint() {
+  const a = parseFloat(amtStr) || 0;
+  if (a <= 0 || !data) return "";
+  if (curSel === "Bs") return "≈ " + money(a / (data.rate || 1));
+  return "≈ " + Math.round(a * (data.rate || 1)).toLocaleString("es-VE") + " Bs";
+}
+function updateAmtUI() {
+  const d = $("#amtDisp"); if (d) d.innerHTML = amtDispHtml();
+  const h = $("#amt-conv"); if (h) h.textContent = convHint();
+}
+function press(k) {
+  if (k === "⌫") amtStr = amtStr.length > 1 ? amtStr.slice(0, -1) : "0";
+  else if (k === ".") { if (!amtStr.includes(".")) amtStr = amtStr === "0" ? "0." : amtStr + "."; }
+  else {
+    if (amtStr === "0") amtStr = k;
+    else {
+      const dec = amtStr.split(".")[1];
+      if (dec && dec.length >= 2) return;
+      if (amtStr.replace(".", "").length >= 10) return;
+      amtStr += k;
+    }
+  }
+  updateAmtUI();
+}
+function resetAmt() { amtStr = "0"; }
 
 const b64e = s => { const b = new TextEncoder().encode(s); let r = ""; for (let i = 0; i < b.length; i += 0x8000) r += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(r); };
 const b64d = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, "")), c => c.charCodeAt(0)));
@@ -197,12 +231,13 @@ function render() {
   </div>` : "";
 
   const catChips = data.cats.map(c => `<span class="cat ${catSel === c.id ? "on" : ""}" data-cat="${esc(c.id)}">${c.emoji} ${esc(c.label)}</span>`).join("");
+  const keysHtml = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"].map(k => `<button class="key${k === "⌫" ? " back" : ""}" data-k="${k}" type="button">${k}</button>`).join("");
 
   const breakHtml = rows.length ? rows.map(r => {
     const c = catOf(r.id);
     return `<div class="lrow"><div class="lab">${c.emoji} ${esc(c.label)} <span class="cnt">${r.n} ${r.n === 1 ? "vez" : "veces"}</span></div>
       <div class="val">${money(r.t)}</div><div class="bar"><i style="width:${Math.max(4, r.t / max * 100)}%"></i></div></div>`;
-  }).join("") : `<div class="empty">Nada este mes todavía. Anota tu primer gasto arriba.</div>`;
+  }).join("") : `<div class="empty">Nada este mes todavía. Marca tu primer gasto arriba.</div>`;
 
   const todays = data.expenses.filter(e => e.d === TODAY);
   const listHtml = todays.length ? todays.map(e => itemHtml(e)).join("") : `<div class="empty">Hoy no has gastado nada. Bien ahí.</div>`;
@@ -219,35 +254,35 @@ function render() {
         <button class="chip-btn" id="tt" type="button" aria-label="Cambiar tema">☀</button></div>
     </div>
 
-    <header class="hero">
-      <div class="hero-lab">Esta semana se te fue</div>
-      <div class="hero-num">${money(sem)}</div>
-      ${splitHtml}
-      <div class="hero-sub">
-        <div class="f">hoy<b>${money(hoy)}</b></div>
-        <div class="f">este mes<b>${money(mes)}</b>${cmp ? `<span class="cmp ${cmp.cls}">${cmp.txt}</span>` : ""}</div>
-      </div>
-    </header>
-
-    ${budHtml}
-
-    <section class="panel">
+    <section class="register">
+      <div class="reg-mini"><span>hoy <b>${money(hoy)}</b></span><span>esta semana <b>${money(sem)}</b></span></div>
       ${quickHtml}
-      <div class="amount-row">
-        <input class="amt" id="amt" inputmode="decimal" placeholder="0" aria-label="Monto">
-        <div class="cur-toggle">
+      <div class="reg-head">
+        <div class="cur-row">
           <button type="button" data-cur="Bs" class="${curSel === "Bs" ? "on" : ""}">Bs</button>
           <button type="button" data-cur="USD" class="${curSel === "USD" ? "on" : ""}">$</button>
         </div>
       </div>
-      <div class="cats" id="cats">${catChips}</div>
+      <div class="amt-big" id="amtDisp">${amtDispHtml()}</div>
+      <div class="amt-conv" id="amt-conv">${convHint()}</div>
+      <div class="cats scroll" id="cats">${catChips}</div>
       <input class="note-in" id="note" placeholder="¿En qué fue? (opcional)">
+      <div class="keypad">${keysHtml}</div>
       <div class="cap-actions">
         <button class="btn-primary" id="add" type="button">Anotar gasto</button>
-        <button class="btn-ghost" id="save-quick" type="button" title="Guardar esto como gasto rápido">★ rápido</button>
+        <button class="btn-ghost star" id="save-quick" type="button" title="Guardar esto como gasto rápido" aria-label="Guardar como rápido">★</button>
       </div>
-      <div class="add-hint" id="hint">Pon el monto y elige en qué fue</div>
+      <div class="add-hint" id="hint">Marca el monto, elige categoría y anota</div>
     </section>
+
+    <section class="week">
+      <div class="block-h"><h2>Tu semana</h2></div>
+      <div class="week-num">${money(sem)}</div>
+      ${splitHtml}
+      <div class="week-sub"><span>hoy ${money(hoy)}</span><span>este mes ${money(mes)}${cmp ? ` <b class="cmp ${cmp.cls}">${cmp.txt}</b>` : ""}</span></div>
+    </section>
+
+    ${budHtml}
 
     <section class="block">
       <div class="block-h"><h2>En qué se va tu plata</h2>
@@ -308,11 +343,11 @@ function wire() {
   label();
   btn.onclick = () => { const n = cur() === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", n); ls.set("gastos.theme", n); label(); };
 
-  document.querySelectorAll("[data-cur]").forEach(b => b.onclick = () => { curSel = b.getAttribute("data-cur"); ls.set("gastos.lastCur", curSel); document.querySelectorAll("[data-cur]").forEach(x => x.classList.toggle("on", x === b)); });
+  document.querySelectorAll("[data-cur]").forEach(b => b.onclick = () => { curSel = b.getAttribute("data-cur"); ls.set("gastos.lastCur", curSel); document.querySelectorAll("[data-cur]").forEach(x => x.classList.toggle("on", x === b)); updateAmtUI(); });
   document.querySelectorAll("[data-cat]").forEach(ch => ch.onclick = () => { catSel = ch.getAttribute("data-cat"); ls.set("gastos.lastCat", catSel); document.querySelectorAll("[data-cat]").forEach(x => x.classList.toggle("on", x === ch)); });
+  document.querySelectorAll("[data-k]").forEach(b => b.onclick = () => press(b.getAttribute("data-k")));
 
   $("#add").onclick = add;
-  $("#amt").addEventListener("keydown", e => { if (e.key === "Enter") add(); });
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => del(b.getAttribute("data-del")));
 
   // rápidos
@@ -332,19 +367,17 @@ function wire() {
   $("#logout").onclick = e => { e.preventDefault(); if (!confirm("¿Quitar el token de este dispositivo? Tus gastos quedan a salvo en el repo privado.")) return; ls.del("hub.token"); token = null; data = null; showGate("Desconectado. Conéctate de nuevo cuando quieras."); };
 }
 
-function readCapture() {
-  const raw = ($("#amt").value || "").replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
-  return { amt: parseFloat(raw), note: ($("#note").value || "").trim() };
-}
+function readCapture() { return { amt: parseFloat(amtStr) || 0, note: ($("#note") ? $("#note").value : "").trim() }; }
 
 function add() {
   const { amt, note } = readCapture();
   const hint = $("#hint");
-  if (!amt || amt <= 0) { hint.textContent = "Escribe un monto 👆"; hint.style.color = "var(--bad)"; $("#amt").focus(); return; }
-  if (!catSel) { hint.textContent = "Elige una categoría 👆"; hint.style.color = "var(--bad)"; return; }
+  if (!amt || amt <= 0) { hint.textContent = "Marca un monto en el teclado"; hint.style.color = "var(--leak)"; return; }
+  if (!catSel) { hint.textContent = "Elige una categoría"; hint.style.color = "var(--leak)"; return; }
   const e = { id: uid(), d: TODAY, amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note };
   if (curSel === "Bs") e.r = data.rate; // congela la tasa del momento
   data.expenses.unshift(e);
+  resetAmt();
   save(); render();
   toast("Anotado ✓");
 }
@@ -361,8 +394,8 @@ function quickAdd(id) {
 function saveQuick() {
   const { amt, note } = readCapture();
   const hint = $("#hint");
-  if (!amt || amt <= 0 || !catSel) { hint.textContent = "Para guardar un rápido: pon monto y categoría 👆"; hint.style.color = "var(--bad)"; return; }
-  if (data.quick.length >= 8) { hint.textContent = "Ya tienes 8 rápidos (el máximo)"; hint.style.color = "var(--bad)"; return; }
+  if (!amt || amt <= 0 || !catSel) { hint.textContent = "Para un rápido: marca monto y categoría"; hint.style.color = "var(--leak)"; return; }
+  if (data.quick.length >= 8) { hint.textContent = "Ya tienes 8 rápidos (el máximo)"; hint.style.color = "var(--leak)"; return; }
   data.quick.push({ id: uid(), amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note });
   save(); render();
   toast("Rápido guardado ★");

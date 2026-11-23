@@ -132,6 +132,36 @@ p{margin:0}
 .cap-actions .btn-ghost{flex:none}
 .add-hint{font-size:12.5px;color:var(--faint);margin-top:11px;text-align:center}
 
+/* REGISTRO — caja registradora: el monto manda, con su propio teclado */
+.register{margin-bottom:1.7rem}
+.reg-mini{display:flex;gap:22px;font-size:12.5px;color:var(--muted);margin-bottom:14px}
+.reg-mini b{font-family:var(--display);color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.reg-head{display:flex;justify-content:flex-end;margin-bottom:4px}
+.cur-row{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.cur-row button{font-family:var(--display);font-weight:700;font-size:14px;border:0;background:transparent;color:var(--muted);padding:8px 20px;cursor:pointer}
+.cur-row button[data-cur="Bs"].on{background:var(--bs);color:#fff}
+.cur-row button[data-cur="USD"].on{background:var(--usd);color:#fff}
+.amt-big{font-family:var(--display);font-weight:800;font-size:clamp(2.8rem,15vw,3.8rem);line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--ink);text-align:right;min-height:1em;word-break:break-all}
+.amt-big .cm{color:var(--faint);font-weight:700}
+.amt-big .dec{color:var(--muted)}
+.amt-conv{text-align:right;font-size:13.5px;color:var(--faint);min-height:1.3em;margin-top:5px;font-variant-numeric:tabular-nums}
+.cats.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:14px -2px;padding:0 2px 2px}
+.cats.scroll::-webkit-scrollbar{display:none}
+.cats.scroll .cat{flex:none}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:4px 0 14px}
+.key{font-family:var(--display);font-weight:700;font-size:1.55rem;background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:15px 0;cursor:pointer;color:var(--ink);line-height:1}
+.key:hover{border-color:var(--ink)}
+.key:active{background:var(--sunk);transform:scale(.97)}
+.key.back{color:var(--muted)}
+.cap-actions .btn-ghost.star{font-size:18px;padding:0 17px;color:var(--bs)}
+
+/* resumen "tu semana" (bajo el pliegue) */
+.week{margin-bottom:1.9rem}
+.week .block-h{margin-bottom:.5rem}
+.week-num{font-family:var(--display);font-weight:800;font-size:2.1rem;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.week-sub{display:flex;gap:20px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:13px}
+.week-sub b.cmp{font-weight:600}
+
 /* bloques de secciones */
 .block{margin-bottom:1.9rem}
 .block-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1rem;gap:10px}
