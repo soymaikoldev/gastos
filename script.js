@@ -140,17 +140,24 @@ function render() {
   const mes = sumRange(d => d.slice(0, 7) === MONTH);
   const mesPrev = sumRange(d => d.slice(0, 7) === PREV_MONTH);
 
+  // semana partida en dos monedas (lo distintivo: tu vida en Bs y en $)
+  const last7 = data.expenses.filter(e => e.d >= WEEK0);
+  const semBs = last7.filter(e => e.cur === "Bs").reduce((a, e) => a + usd(e), 0);
+  const semUsd = last7.filter(e => e.cur === "USD").reduce((a, e) => a + usd(e), 0);
+  const bsPct = sem > 0 ? semBs / sem * 100 : 0;
+
   const rows = breakdown(MONTH);
   const max = rows.length ? rows[0].t : 1;
 
   // mes vs mes pasado
-  let cmp = "";
+  let cmp = null;
   if (mesPrev > 0) {
     const diff = (mes - mesPrev) / mesPrev * 100;
     const r = Math.round(Math.abs(diff));
-    if (r < 2) cmp = `≈ igual que ${monName(PREV_MONTH).split(" ")[0].toLowerCase()}`;
-    else if (diff < 0) cmp = `📉 ${r}% menos que ${monName(PREV_MONTH).split(" ")[0].toLowerCase()}`;
-    else cmp = `📈 ${r}% más que ${monName(PREV_MONTH).split(" ")[0].toLowerCase()}`;
+    const mn = monName(PREV_MONTH).split(" ")[0].toLowerCase();
+    if (r < 2) cmp = { cls: "", txt: `casi igual que ${mn}` };
+    else if (diff < 0) cmp = { cls: "down", txt: `${r}% menos que ${mn}` };
+    else cmp = { cls: "up", txt: `${r}% más que ${mn}` };
   }
 
   // presupuesto
@@ -159,23 +166,23 @@ function render() {
   if (budget > 0) {
     const pct = mes / budget * 100;
     const rest = budget - mes;
-    const cls = pct >= 100 ? "over" : pct >= 75 ? "warn" : "ok";
-    const restTxt = rest >= 0 ? `${money(rest)} te queda` : `${money(-rest)} pasado`;
+    const cls = pct >= 100 ? "over" : pct >= 75 ? "warn" : "";
+    const restTxt = rest >= 0 ? `${money(rest)} te queda` : `${money(-rest)} de más`;
     budHtml = `<div class="budget ${cls}">
-      <div class="bud-top"><span>Presupuesto del mes</span><b>${restTxt}</b></div>
-      <div class="bud-bar"><i style="width:${Math.min(100, pct)}%"></i></div>
-      <div class="bud-foot"><span>Gastado ${money(mes)} de <input class="mini-in" id="budget" inputmode="numeric" value="${budget}"></span><span>${Math.round(pct)}%</span></div>
+      <div class="b-top"><span>Tu techo del mes</span><b>${restTxt}</b></div>
+      <div class="b-bar"><i style="width:${Math.min(100, pct)}%"></i></div>
+      <div class="b-foot"><span>Llevas ${money(mes)} de <input class="mini-in" id="budget" inputmode="numeric" value="${budget}"></span><span>${Math.round(pct)}%</span></div>
     </div>`;
   } else {
-    budHtml = `<div class="budget none"><div class="bud-foot"><span>Ponle un techo al mes y ve cuánto te queda:</span> <span>$<input class="mini-in" id="budget" inputmode="numeric" value="" placeholder="200"></span></div></div>`;
+    budHtml = `<div class="budget none"><div class="b-foot"><span>Ponle un techo al mes y ve cuánto te queda</span><span>$<input class="mini-in" id="budget" inputmode="numeric" value="" placeholder="200"></span></div></div>`;
   }
 
-  // gasto hormiga
+  // gasto hormiga — el antagonista
   let fuga = "";
   if (rows.length) {
     const horm = [...rows].filter(r => r.n >= 3 && r.t / r.n <= 5).sort((a, b) => b.n - a.n)[0];
-    if (horm) { const c = catOf(horm.id); fuga = `🐜 <b>Gasto hormiga:</b> ${c.emoji} ${esc(c.label)} — ${horm.n} compras pequeñas suman <b>${money(horm.t)}</b> este mes. Ahí hay fuga.`; }
-    else { const c = catOf(rows[0].id); fuga = `Tu mayor salida este mes: ${c.emoji} <b>${esc(c.label)}</b> con ${money(rows[0].t)}.`; }
+    if (horm) { const c = catOf(horm.id); fuga = `🐜 <b>Gasto hormiga en ${c.emoji} ${esc(c.label)}.</b> ${horm.n} compras chiquitas suman <b>${money(horm.t)}</b> este mes. Esa plata se te escurre sin que la sientas.`; }
+    else { const c = catOf(rows[0].id); fuga = `Por donde más se te va: ${c.emoji} <b>${esc(c.label)}</b>, ${money(rows[0].t)} este mes.`; }
   }
 
   // rápidos
@@ -184,39 +191,47 @@ function render() {
       const c = catOf(q.cat);
       const amt = q.cur === "USD" ? money(q.amt) : q.amt.toLocaleString("es-VE") + " Bs";
       const lab = q.note || c.label;
-      return `<span class="q" data-q="${esc(q.id)}">${c.emoji} ${esc(lab)} · ${amt}${qManage ? `<b class="qx" data-qx="${esc(q.id)}">✕</b>` : ""}</span>`;
+      return `<span class="q" data-q="${esc(q.id)}">${c.emoji} ${esc(lab)} ${amt}${qManage ? `<b class="qx" data-qx="${esc(q.id)}">✕</b>` : ""}</span>`;
     }).join("")}
-    <button class="q-edit" id="q-edit" type="button">${qManage ? "listo" : "✎"}</button>
+    <button class="q-edit" id="q-edit" type="button" title="${qManage ? "Listo" : "Editar rápidos"}">${qManage ? "✓" : "✎"}</button>
   </div>` : "";
 
   const catChips = data.cats.map(c => `<span class="cat ${catSel === c.id ? "on" : ""}" data-cat="${esc(c.id)}">${c.emoji} ${esc(c.label)}</span>`).join("");
 
   const breakHtml = rows.length ? rows.map(r => {
     const c = catOf(r.id);
-    return `<div class="brow"><div class="lab">${c.emoji} ${esc(c.label)} <span class="cnt">·${r.n}</span></div>
+    return `<div class="lrow"><div class="lab">${c.emoji} ${esc(c.label)} <span class="cnt">${r.n} ${r.n === 1 ? "vez" : "veces"}</span></div>
       <div class="val">${money(r.t)}</div><div class="bar"><i style="width:${Math.max(4, r.t / max * 100)}%"></i></div></div>`;
-  }).join("") : `<div class="empty">Nada este mes todavía. Anota tu primer gasto arriba 👆</div>`;
+  }).join("") : `<div class="empty">Nada este mes todavía. Anota tu primer gasto arriba.</div>`;
 
   const todays = data.expenses.filter(e => e.d === TODAY);
-  const listHtml = todays.length ? todays.map(e => itemHtml(e)).join("") : `<div class="empty">Sin gastos hoy. ¡Buena esa! 🎉</div>`;
+  const listHtml = todays.length ? todays.map(e => itemHtml(e)).join("") : `<div class="empty">Hoy no has gastado nada. Bien ahí.</div>`;
+
+  const splitHtml = sem > 0 ? `
+    <div class="split"><i class="bs" style="width:${bsPct}%"></i><i class="usd" style="width:${100 - bsPct}%"></i></div>
+    <div class="split-legend"><span class="leg bs">bolívares <b>${money(semBs)}</b></span><span class="leg usd">dólares <b>${money(semUsd)}</b></span></div>` : "";
 
   $("#app").innerHTML = `
   <div class="wrap">
     <div class="top">
-      <div class="brandmark">mis<span>·</span>gastos</div>
+      <div class="brandmark">mis <em>gastos</em></div>
       <div class="top-actions"><span class="sync-note" id="syncnote"><span class="dot"></span></span>
-        <button class="chip-btn" id="tt" type="button">tema</button></div>
+        <button class="chip-btn" id="tt" type="button" aria-label="Cambiar tema">☀</button></div>
     </div>
 
-    <div class="tiles">
-      <div class="tile"><div class="k">Hoy</div><div class="v">${money(hoy)}</div></div>
-      <div class="tile"><div class="k">7 días</div><div class="v">${money(sem)}</div></div>
-      <div class="tile mes"><div class="k">Mes</div><div class="v">${money(mes)}</div>${cmp ? `<div class="cmp">${cmp}</div>` : ""}</div>
-    </div>
+    <header class="hero">
+      <div class="hero-lab">Esta semana se te fue</div>
+      <div class="hero-num">${money(sem)}</div>
+      ${splitHtml}
+      <div class="hero-sub">
+        <div class="f">hoy<b>${money(hoy)}</b></div>
+        <div class="f">este mes<b>${money(mes)}</b>${cmp ? `<span class="cmp ${cmp.cls}">${cmp.txt}</span>` : ""}</div>
+      </div>
+    </header>
 
     ${budHtml}
 
-    <div class="capture">
+    <section class="panel">
       ${quickHtml}
       <div class="amount-row">
         <input class="amt" id="amt" inputmode="decimal" placeholder="0" aria-label="Monto">
@@ -226,31 +241,31 @@ function render() {
         </div>
       </div>
       <div class="cats" id="cats">${catChips}</div>
-      <input class="note-in" id="note" placeholder="Nota (opcional): en qué fue">
+      <input class="note-in" id="note" placeholder="¿En qué fue? (opcional)">
       <div class="cap-actions">
         <button class="btn-primary" id="add" type="button">Anotar gasto</button>
         <button class="btn-ghost" id="save-quick" type="button" title="Guardar esto como gasto rápido">★ rápido</button>
       </div>
-      <div class="add-hint" id="hint">Monto · moneda · categoría · listo</div>
-    </div>
+      <div class="add-hint" id="hint">Pon el monto y elige en qué fue</div>
+    </section>
 
-    <div class="sec">
-      <div class="sec-h"><h2>En qué se va tu plata</h2>
-        <button class="link-btn" id="resumen" type="button">📋 Resumen del mes</button></div>
-      <div class="break">${breakHtml}</div>
-      ${fuga ? `<div class="fuga">${fuga}</div>` : ""}
-    </div>
+    <section class="block">
+      <div class="block-h"><h2>En qué se va tu plata</h2>
+        <button class="link-btn" id="resumen" type="button">Copiar resumen</button></div>
+      <div class="ledger">${breakHtml}</div>
+      ${fuga ? `<div class="leak-note">${fuga}</div>` : ""}
+    </section>
 
-    <div class="sec">
-      <div class="sec-h"><h2>Hoy</h2>
-        <button class="link-btn" id="ver-hist" type="button">Ver historial →</button></div>
+    <section class="block">
+      <div class="block-h"><h2>Lo de hoy</h2>
+        <button class="link-btn" id="ver-hist" type="button">Ver historial</button></div>
       <div class="list">${listHtml}</div>
-    </div>
+    </section>
 
     <div class="foot">
-      <div class="rate-wrap">Tasa: <input class="rate-in" id="rate" inputmode="numeric" value="${data.rate}"> Bs = $1
+      <div class="rate-wrap">Tasa <input class="rate-in" id="rate" inputmode="numeric" value="${data.rate}"> Bs/$
         <button class="rate-refresh" id="rate-refresh" type="button" title="Actualizar tasa paralela">↻</button>
-        <span class="rate-note" id="rate-note">${data.rateSrc === "auto" ? "auto · " + (data.rateFetched === TODAY ? "hoy" : esc(data.rateFetched || "")) : "manual"}</span>
+        <span class="rate-note" id="rate-note">${data.rateSrc === "auto" ? (data.rateFetched === TODAY ? "de hoy" : esc(data.rateFetched || "")) : "manual"}</span>
       </div>
       <a href="#" id="logout">Desconectar</a>
     </div>
@@ -258,13 +273,13 @@ function render() {
 
   <dialog id="hist" class="hist">
     <div class="hist-head">
-      <button class="nav" id="h-prev" type="button">‹</button>
+      <button class="nav" id="h-prev" type="button" aria-label="Mes anterior">‹</button>
       <h2 id="h-title">Historial</h2>
-      <button class="nav" id="h-next" type="button">›</button>
+      <button class="nav" id="h-next" type="button" aria-label="Mes siguiente">›</button>
     </div>
     <div class="hist-sum" id="h-sum"></div>
     <div class="hist-body" id="h-body"></div>
-    <button class="btn-ghost" id="h-close" type="button" style="margin-top:14px;width:100%">Cerrar</button>
+    <button class="btn-ghost" id="h-close" type="button" style="margin-top:16px;width:100%">Cerrar</button>
   </dialog>
 
   <div class="toast" id="toast"></div>`;
@@ -276,11 +291,13 @@ function render() {
 
 function itemHtml(e, showDay) {
   const c = catOf(e.cat);
+  const curCls = e.cur === "USD" ? "usd" : "bs";
   const orig = e.cur === "USD" ? money(e.amt) : e.amt.toLocaleString("es-VE") + " Bs";
-  return `<div class="item"><span class="ic">${c.emoji}</span>
-    <div class="mid"><div class="c">${esc(c.label)}${showDay ? ` <span class="n" style="display:inline">· ${dayName(e.d)}</span>` : ""}</div>${e.note ? `<div class="n">${esc(e.note)}</div>` : ""}</div>
-    <div class="amt2">${orig}<small>${e.cur === "USD" ? "" : "≈ " + money(usd(e))}</small></div>
-    <button class="del" data-del="${esc(e.id)}" title="Borrar">✕</button></div>`;
+  const sub = e.cur === "USD" ? "" : "≈ " + money(usd(e));
+  return `<div class="row"><span class="row-ic">${c.emoji}</span>
+    <div class="row-mid"><div class="row-c">${esc(c.label)}${showDay ? `<span class="row-day">${dayName(e.d)}</span>` : ""}</div>${e.note ? `<div class="row-n">${esc(e.note)}</div>` : ""}</div>
+    <div class="row-amt ${curCls}">${orig}${sub ? `<span>${sub}</span>` : ""}</div>
+    <button class="row-del" data-del="${esc(e.id)}" title="Borrar">✕</button></div>`;
 }
 
 /* ---------- interacción ---------- */
