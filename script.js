@@ -3,6 +3,7 @@
 
 const GH = { owner: "soymaikoldev", repo: "content-hub-data", path: "gastos.json" };
 const API = `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${GH.path}`;
+const RATE_API = "https://ve.dolarapi.com/v1/dolares/paralelo"; // tasa paralela, CORS abierto
 const ls = {
   get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
@@ -63,6 +64,28 @@ async function push() {
 function save() { ls.set("gastos.cache", JSON.stringify(data)); if (!token) return; syncDot("busy", "…"); clearTimeout(saveTimer); saveTimer = setTimeout(push, 800); }
 const hora = () => new Date().toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
 
+/* ---------- tasa automática (paralelo) ---------- */
+async function fetchRate() {
+  const res = await fetch(RATE_API, { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const j = await res.json();
+  const v = Math.round(Number(j.promedio));
+  if (!v || v <= 0) throw new Error("rate");
+  return v;
+}
+// force=true: refresca aunque ya se haya consultado hoy (botón ↻)
+async function autoRate(force) {
+  if (!data) return;
+  if (!force && data.rateFetched === TODAY) return;   // una vez al día
+  if (!force && data.rateSrc === "manual" && data.rateFetched === TODAY) return;
+  const el = $("#rate-note"); if (el) el.textContent = "actualizando…";
+  try {
+    const v = await fetchRate();
+    data.rate = v; data.rateFetched = TODAY; data.rateSrc = "auto";
+    save(); render();
+  } catch { if (el) el.textContent = "auto no disponible"; }
+}
+
 /* ---------- carga ---------- */
 async function load() {
   if (!token) { showGate("Privado y solo tuyo. Conéctate con tu token para empezar."); return; }
@@ -71,7 +94,7 @@ async function load() {
     const r = await pull();
     if (!r) { try { data = JSON.parse(ls.get("gastos.cache")); } catch {} if (!data) { showGate("Aún no hay datos. Pídele a Claude que los cree."); return; } }
     else { data = r; ls.set("gastos.cache", JSON.stringify(data)); }
-    normalize(); render();
+    normalize(); render(); autoRate();
   } catch (e) {
     if (e.message === "auth") return;
     try { data = JSON.parse(ls.get("gastos.cache")); } catch {}
@@ -176,7 +199,10 @@ function render() {
     </div>
 
     <div class="foot">
-      <div class="rate-wrap">Tasa: <input class="rate-in" id="rate" inputmode="numeric" value="${data.rate}"> Bs = $1</div>
+      <div class="rate-wrap">Tasa: <input class="rate-in" id="rate" inputmode="numeric" value="${data.rate}"> Bs = $1
+        <button class="rate-refresh" id="rate-refresh" type="button" title="Actualizar tasa paralela">↻</button>
+        <span class="rate-note" id="rate-note">${data.rateSrc === "auto" ? "auto · " + (data.rateFetched === TODAY ? "hoy" : esc(data.rateFetched || "")) : "manual"}</span>
+      </div>
       <a href="#" id="logout">Desconectar</a>
     </div>
   </div>
@@ -202,7 +228,8 @@ function wire() {
   $("#amt").addEventListener("keydown", e => { if (e.key === "Enter") add(); });
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => del(b.getAttribute("data-del")));
 
-  $("#rate").addEventListener("change", e => { const v = parseInt(String(e.target.value).replace(/[^\d]/g, ""), 10); if (v > 0) { data.rate = v; save(); render(); } });
+  $("#rate").addEventListener("change", e => { const v = parseInt(String(e.target.value).replace(/[^\d]/g, ""), 10); if (v > 0) { data.rate = v; data.rateSrc = "manual"; data.rateFetched = TODAY; save(); render(); } });
+  const rr = $("#rate-refresh"); if (rr) rr.onclick = () => autoRate(true);
   $("#logout").onclick = e => { e.preventDefault(); if (!confirm("¿Quitar el token de este dispositivo? Tus gastos quedan a salvo en el repo privado.")) return; ls.del("hub.token"); token = null; data = null; showGate("Desconectado. Conéctate de nuevo cuando quieras."); };
 }
 
