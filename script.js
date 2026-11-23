@@ -19,6 +19,8 @@ let data = null, sha = null, saveTimer = null, saving = false, dirty = false;
 let curSel = ls.get("gastos.lastCur") || "Bs";
 let catSel = ls.get("gastos.lastCat") || null;
 let lastDel = null;
+let qManage = false;   // modo gestionar rápidos
+let histMonth = null;  // mes abierto en el historial
 
 const b64e = s => { const b = new TextEncoder().encode(s); let r = ""; for (let i = 0; i < b.length; i += 0x8000) r += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(r); };
 const b64d = s => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\n/g, "")), c => c.charCodeAt(0)));
@@ -28,6 +30,10 @@ const ymd = dt => dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2,
 const TODAY = ymd(new Date());
 const WEEK0 = ymd(new Date(Date.now() - 6 * 864e5));
 const MONTH = TODAY.slice(0, 7);
+const addMonth = (ym, n) => { const d = new Date(ym + "-01T00:00:00"); d.setMonth(d.getMonth() + n); return ymd(d).slice(0, 7); };
+const PREV_MONTH = addMonth(MONTH, -1);
+const monName = ym => { const s = new Date(ym + "-01T00:00:00").toLocaleDateString("es-VE", { month: "long", year: "numeric" }); return s.charAt(0).toUpperCase() + s.slice(1); };
+const dayName = d => { const s = new Date(d + "T00:00:00").toLocaleDateString("es-VE", { weekday: "short", day: "numeric", month: "short" }); return s.charAt(0).toUpperCase() + s.slice(1); };
 
 /* ---------- GitHub ---------- */
 async function gh(method, body) {
@@ -105,14 +111,22 @@ async function load() {
 function normalize() {
   if (!data.cats || !data.cats.length) data.cats = [{ id: "otros", label: "Otros", emoji: "✨" }];
   if (!Array.isArray(data.expenses)) data.expenses = [];
+  if (!Array.isArray(data.quick)) data.quick = [];
   if (!data.rate) data.rate = 1167;
+  if (typeof data.budget !== "number") data.budget = 0;
   if (catSel && !data.cats.some(c => c.id === catSel)) catSel = null;
 }
 
 /* ---------- helpers de cálculo ---------- */
-const usd = e => e.cur === "USD" ? e.amt : e.amt / (data.rate || 1);
+// usa la tasa guardada al momento del gasto (e.r) para que el histórico no se distorsione al mover la tasa
+const usd = e => e.cur === "USD" ? e.amt : e.amt / (e.r || data.rate || 1);
 const catOf = id => data.cats.find(c => c.id === id) || { id, label: id, emoji: "•" };
 function sumRange(test) { return data.expenses.filter(e => test(e.d)).reduce((a, e) => a + usd(e), 0); }
+function breakdown(ym) {
+  const by = {};
+  data.expenses.filter(e => e.d.slice(0, 7) === ym).forEach(e => { (by[e.cat] = by[e.cat] || { t: 0, n: 0 }), by[e.cat].t += usd(e), by[e.cat].n++; });
+  return Object.entries(by).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.t - a.t);
+}
 
 /* ---------- render ---------- */
 function syncDot(kind, text) { const el = $("#syncnote"); if (el) el.innerHTML = `<span class="dot ${kind}"></span>${esc(text)}`; }
@@ -124,22 +138,56 @@ function render() {
   const hoy = sumRange(d => d === TODAY);
   const sem = sumRange(d => d >= WEEK0);
   const mes = sumRange(d => d.slice(0, 7) === MONTH);
+  const mesPrev = sumRange(d => d.slice(0, 7) === PREV_MONTH);
 
-  // desglose del mes por categoría
-  const byCat = {};
-  data.expenses.filter(e => e.d.slice(0, 7) === MONTH).forEach(e => {
-    (byCat[e.cat] = byCat[e.cat] || { t: 0, n: 0 }), byCat[e.cat].t += usd(e), byCat[e.cat].n++;
-  });
-  const rows = Object.entries(byCat).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.t - a.t);
+  const rows = breakdown(MONTH);
   const max = rows.length ? rows[0].t : 1;
 
-  // gasto hormiga: categoría con más transacciones y promedio chico
+  // mes vs mes pasado
+  let cmp = "";
+  if (mesPrev > 0) {
+    const diff = (mes - mesPrev) / mesPrev * 100;
+    const r = Math.round(Math.abs(diff));
+    if (r < 2) cmp = `≈ igual que ${monName(PREV_MONTH).split(" ")[0].toLowerCase()}`;
+    else if (diff < 0) cmp = `📉 ${r}% menos que ${monName(PREV_MONTH).split(" ")[0].toLowerCase()}`;
+    else cmp = `📈 ${r}% más que ${monName(PREV_MONTH).split(" ")[0].toLowerCase()}`;
+  }
+
+  // presupuesto
+  const budget = data.budget || 0;
+  let budHtml = "";
+  if (budget > 0) {
+    const pct = mes / budget * 100;
+    const rest = budget - mes;
+    const cls = pct >= 100 ? "over" : pct >= 75 ? "warn" : "ok";
+    const restTxt = rest >= 0 ? `${money(rest)} te queda` : `${money(-rest)} pasado`;
+    budHtml = `<div class="budget ${cls}">
+      <div class="bud-top"><span>Presupuesto del mes</span><b>${restTxt}</b></div>
+      <div class="bud-bar"><i style="width:${Math.min(100, pct)}%"></i></div>
+      <div class="bud-foot"><span>Gastado ${money(mes)} de <input class="mini-in" id="budget" inputmode="numeric" value="${budget}"></span><span>${Math.round(pct)}%</span></div>
+    </div>`;
+  } else {
+    budHtml = `<div class="budget none"><div class="bud-foot"><span>Ponle un techo al mes y ve cuánto te queda:</span> <span>$<input class="mini-in" id="budget" inputmode="numeric" value="" placeholder="200"></span></div></div>`;
+  }
+
+  // gasto hormiga
   let fuga = "";
   if (rows.length) {
     const horm = [...rows].filter(r => r.n >= 3 && r.t / r.n <= 5).sort((a, b) => b.n - a.n)[0];
     if (horm) { const c = catOf(horm.id); fuga = `🐜 <b>Gasto hormiga:</b> ${c.emoji} ${esc(c.label)} — ${horm.n} compras pequeñas suman <b>${money(horm.t)}</b> este mes. Ahí hay fuga.`; }
     else { const c = catOf(rows[0].id); fuga = `Tu mayor salida este mes: ${c.emoji} <b>${esc(c.label)}</b> con ${money(rows[0].t)}.`; }
   }
+
+  // rápidos
+  const quickHtml = data.quick.length ? `<div class="quicks">
+    ${data.quick.map(q => {
+      const c = catOf(q.cat);
+      const amt = q.cur === "USD" ? money(q.amt) : q.amt.toLocaleString("es-VE") + " Bs";
+      const lab = q.note || c.label;
+      return `<span class="q" data-q="${esc(q.id)}">${c.emoji} ${esc(lab)} · ${amt}${qManage ? `<b class="qx" data-qx="${esc(q.id)}">✕</b>` : ""}</span>`;
+    }).join("")}
+    <button class="q-edit" id="q-edit" type="button">${qManage ? "listo" : "✎"}</button>
+  </div>` : "";
 
   const catChips = data.cats.map(c => `<span class="cat ${catSel === c.id ? "on" : ""}" data-cat="${esc(c.id)}">${c.emoji} ${esc(c.label)}</span>`).join("");
 
@@ -150,14 +198,7 @@ function render() {
   }).join("") : `<div class="empty">Nada este mes todavía. Anota tu primer gasto arriba 👆</div>`;
 
   const todays = data.expenses.filter(e => e.d === TODAY);
-  const listHtml = todays.length ? todays.map(e => {
-    const c = catOf(e.cat);
-    const orig = e.cur === "USD" ? money(e.amt) : e.amt.toLocaleString("es-VE") + " Bs";
-    return `<div class="item"><span class="ic">${c.emoji}</span>
-      <div class="mid"><div class="c">${esc(c.label)}</div>${e.note ? `<div class="n">${esc(e.note)}</div>` : ""}</div>
-      <div class="amt2">${orig}<small>${e.cur === "USD" ? "" : "≈ " + money(usd(e))}</small></div>
-      <button class="del" data-del="${esc(e.id)}" title="Borrar">✕</button></div>`;
-  }).join("") : `<div class="empty">Sin gastos hoy. ¡Buena esa! 🎉</div>`;
+  const listHtml = todays.length ? todays.map(e => itemHtml(e)).join("") : `<div class="empty">Sin gastos hoy. ¡Buena esa! 🎉</div>`;
 
   $("#app").innerHTML = `
   <div class="wrap">
@@ -170,10 +211,13 @@ function render() {
     <div class="tiles">
       <div class="tile"><div class="k">Hoy</div><div class="v">${money(hoy)}</div></div>
       <div class="tile"><div class="k">7 días</div><div class="v">${money(sem)}</div></div>
-      <div class="tile mes"><div class="k">Mes</div><div class="v">${money(mes)}</div></div>
+      <div class="tile mes"><div class="k">Mes</div><div class="v">${money(mes)}</div>${cmp ? `<div class="cmp">${cmp}</div>` : ""}</div>
     </div>
 
+    ${budHtml}
+
     <div class="capture">
+      ${quickHtml}
       <div class="amount-row">
         <input class="amt" id="amt" inputmode="decimal" placeholder="0" aria-label="Monto">
         <div class="cur-toggle">
@@ -183,18 +227,23 @@ function render() {
       </div>
       <div class="cats" id="cats">${catChips}</div>
       <input class="note-in" id="note" placeholder="Nota (opcional): en qué fue">
-      <button class="btn-primary" id="add" style="width:100%" type="button">Anotar gasto</button>
+      <div class="cap-actions">
+        <button class="btn-primary" id="add" type="button">Anotar gasto</button>
+        <button class="btn-ghost" id="save-quick" type="button" title="Guardar esto como gasto rápido">★ rápido</button>
+      </div>
       <div class="add-hint" id="hint">Monto · moneda · categoría · listo</div>
     </div>
 
     <div class="sec">
-      <div class="sec-h"><h2>En qué se va tu plata</h2><span class="small">este mes</span></div>
+      <div class="sec-h"><h2>En qué se va tu plata</h2>
+        <button class="link-btn" id="resumen" type="button">📋 Resumen del mes</button></div>
       <div class="break">${breakHtml}</div>
       ${fuga ? `<div class="fuga">${fuga}</div>` : ""}
     </div>
 
     <div class="sec">
-      <div class="sec-h"><h2>Hoy</h2><span class="small">${todays.length} ${todays.length === 1 ? "gasto" : "gastos"}</span></div>
+      <div class="sec-h"><h2>Hoy</h2>
+        <button class="link-btn" id="ver-hist" type="button">Ver historial →</button></div>
       <div class="list">${listHtml}</div>
     </div>
 
@@ -206,11 +255,32 @@ function render() {
       <a href="#" id="logout">Desconectar</a>
     </div>
   </div>
+
+  <dialog id="hist" class="hist">
+    <div class="hist-head">
+      <button class="nav" id="h-prev" type="button">‹</button>
+      <h2 id="h-title">Historial</h2>
+      <button class="nav" id="h-next" type="button">›</button>
+    </div>
+    <div class="hist-sum" id="h-sum"></div>
+    <div class="hist-body" id="h-body"></div>
+    <button class="btn-ghost" id="h-close" type="button" style="margin-top:14px;width:100%">Cerrar</button>
+  </dialog>
+
   <div class="toast" id="toast"></div>`;
 
   $("#gate").hidden = true; $("#app").hidden = false;
   wire();
   syncDot(token ? "ok" : "", token ? "Guardado " + hora() : "");
+}
+
+function itemHtml(e, showDay) {
+  const c = catOf(e.cat);
+  const orig = e.cur === "USD" ? money(e.amt) : e.amt.toLocaleString("es-VE") + " Bs";
+  return `<div class="item"><span class="ic">${c.emoji}</span>
+    <div class="mid"><div class="c">${esc(c.label)}${showDay ? ` <span class="n" style="display:inline">· ${dayName(e.d)}</span>` : ""}</div>${e.note ? `<div class="n">${esc(e.note)}</div>` : ""}</div>
+    <div class="amt2">${orig}<small>${e.cur === "USD" ? "" : "≈ " + money(usd(e))}</small></div>
+    <button class="del" data-del="${esc(e.id)}" title="Borrar">✕</button></div>`;
 }
 
 /* ---------- interacción ---------- */
@@ -228,28 +298,120 @@ function wire() {
   $("#amt").addEventListener("keydown", e => { if (e.key === "Enter") add(); });
   document.querySelectorAll("[data-del]").forEach(b => b.onclick = () => del(b.getAttribute("data-del")));
 
+  // rápidos
+  document.querySelectorAll("[data-q]").forEach(el => el.onclick = ev => { if (ev.target.classList.contains("qx")) return; quickAdd(el.getAttribute("data-q")); });
+  document.querySelectorAll("[data-qx]").forEach(el => el.onclick = () => quickDel(el.getAttribute("data-qx")));
+  if ($("#q-edit")) $("#q-edit").onclick = () => { qManage = !qManage; render(); };
+  $("#save-quick").onclick = saveQuick;
+
+  $("#resumen").onclick = copyResumen;
+  $("#ver-hist").onclick = () => openHist(MONTH);
+
+  // presupuesto
+  if ($("#budget")) $("#budget").addEventListener("change", e => { const v = parseInt(String(e.target.value).replace(/[^\d]/g, ""), 10); data.budget = v > 0 ? v : 0; save(); render(); });
+
   $("#rate").addEventListener("change", e => { const v = parseInt(String(e.target.value).replace(/[^\d]/g, ""), 10); if (v > 0) { data.rate = v; data.rateSrc = "manual"; data.rateFetched = TODAY; save(); render(); } });
   const rr = $("#rate-refresh"); if (rr) rr.onclick = () => autoRate(true);
   $("#logout").onclick = e => { e.preventDefault(); if (!confirm("¿Quitar el token de este dispositivo? Tus gastos quedan a salvo en el repo privado.")) return; ls.del("hub.token"); token = null; data = null; showGate("Desconectado. Conéctate de nuevo cuando quieras."); };
 }
 
-function add() {
+function readCapture() {
   const raw = ($("#amt").value || "").replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
-  const amt = parseFloat(raw);
+  return { amt: parseFloat(raw), note: ($("#note").value || "").trim() };
+}
+
+function add() {
+  const { amt, note } = readCapture();
   const hint = $("#hint");
   if (!amt || amt <= 0) { hint.textContent = "Escribe un monto 👆"; hint.style.color = "var(--bad)"; $("#amt").focus(); return; }
   if (!catSel) { hint.textContent = "Elige una categoría 👆"; hint.style.color = "var(--bad)"; return; }
-  data.expenses.unshift({ id: uid(), d: TODAY, amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note: ($("#note").value || "").trim() });
+  const e = { id: uid(), d: TODAY, amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note };
+  if (curSel === "Bs") e.r = data.rate; // congela la tasa del momento
+  data.expenses.unshift(e);
   save(); render();
   toast("Anotado ✓");
+}
+
+function quickAdd(id) {
+  const q = data.quick.find(x => x.id === id); if (!q) return;
+  const e = { id: uid(), d: TODAY, amt: q.amt, cur: q.cur, cat: q.cat, note: q.note || "" };
+  if (q.cur === "Bs") e.r = data.rate;
+  data.expenses.unshift(e);
+  save(); render();
+  toast(`${catOf(q.cat).emoji} ${q.note || catOf(q.cat).label} anotado ✓`, "Deshacer", () => { const i = data.expenses.findIndex(x => x.id === e.id); if (i >= 0) { data.expenses.splice(i, 1); save(); render(); } });
+}
+
+function saveQuick() {
+  const { amt, note } = readCapture();
+  const hint = $("#hint");
+  if (!amt || amt <= 0 || !catSel) { hint.textContent = "Para guardar un rápido: pon monto y categoría 👆"; hint.style.color = "var(--bad)"; return; }
+  if (data.quick.length >= 8) { hint.textContent = "Ya tienes 8 rápidos (el máximo)"; hint.style.color = "var(--bad)"; return; }
+  data.quick.push({ id: uid(), amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note });
+  save(); render();
+  toast("Rápido guardado ★");
+}
+function quickDel(id) {
+  const i = data.quick.findIndex(x => x.id === id);
+  if (i < 0) return;
+  data.quick.splice(i, 1); save();
+  if (!data.quick.length) qManage = false;
+  render();
 }
 
 function del(id) {
   const i = data.expenses.findIndex(e => e.id === id);
   if (i < 0) return;
   lastDel = { e: data.expenses[i], i };
-  data.expenses.splice(i, 1); save(); render();
-  toast("Gasto borrado", "Deshacer", () => { if (lastDel) { data.expenses.splice(lastDel.i, 0, lastDel.e); lastDel = null; save(); render(); } });
+  data.expenses.splice(i, 1); save();
+  if (histMonth && $("#hist") && $("#hist").open) renderHist(); else render();
+  toast("Gasto borrado", "Deshacer", () => { if (lastDel) { data.expenses.splice(lastDel.i, 0, lastDel.e); lastDel = null; save(); if (histMonth && $("#hist") && $("#hist").open) renderHist(); else render(); } });
+}
+
+/* ---------- resumen del mes (copiar) ---------- */
+function monthSummaryText(ym) {
+  const es = data.expenses.filter(e => e.d.slice(0, 7) === ym);
+  const total = es.reduce((a, e) => a + usd(e), 0);
+  const rows = breakdown(ym);
+  let s = `📊 Gastos de ${monName(ym)}\nTotal: ${money(total)} · ${es.length} ${es.length === 1 ? "gasto" : "gastos"}`;
+  rows.forEach(r => { const c = catOf(r.id); s += `\n• ${c.label}: ${money(r.t)} (${r.n})`; });
+  s += `\n(para la Torre de Control)`;
+  return s;
+}
+async function copyResumen() {
+  const txt = monthSummaryText(MONTH);
+  try { await navigator.clipboard.writeText(txt); toast("Resumen copiado ✓"); }
+  catch { toast("Copia manual 👇", null); alertFallback(txt); }
+}
+function alertFallback(txt) {
+  const el = $("#toast"); if (!el) return;
+  el.innerHTML = `<span style="white-space:pre-line;text-align:left">${esc(txt)}</span>`;
+  el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 8000);
+}
+
+/* ---------- historial ---------- */
+function openHist(ym) { histMonth = ym; renderHist(); const d = $("#hist"); if (d && !d.open) d.showModal(); }
+function renderHist() {
+  const ym = histMonth;
+  $("#h-title").textContent = monName(ym);
+  const es = data.expenses.filter(e => e.d.slice(0, 7) === ym).sort((a, b) => b.d < a.d ? -1 : b.d > a.d ? 1 : 0);
+  const total = es.reduce((a, e) => a + usd(e), 0);
+  const rows = breakdown(ym);
+  $("#h-sum").innerHTML = `<div class="h-total">${money(total)} <span>· ${es.length} ${es.length === 1 ? "gasto" : "gastos"}</span></div>
+    ${rows.length ? `<div class="h-cats">${rows.slice(0, 4).map(r => { const c = catOf(r.id); return `<span>${c.emoji} ${money(r.t)}</span>`; }).join("")}</div>` : ""}`;
+  // agrupar por día
+  const byDay = {};
+  es.forEach(e => (byDay[e.d] = byDay[e.d] || []).push(e));
+  const days = Object.keys(byDay).sort((a, b) => b < a ? -1 : 1);
+  $("#h-body").innerHTML = days.length ? days.map(d => {
+    const dt = byDay[d].reduce((a, e) => a + usd(e), 0);
+    return `<div class="h-day"><div class="h-day-h"><span>${dayName(d)}</span><b>${money(dt)}</b></div>
+      ${byDay[d].map(e => itemHtml(e)).join("")}</div>`;
+  }).join("") : `<div class="empty">Sin gastos en ${monName(ym)}.</div>`;
+  document.querySelectorAll("#h-body [data-del]").forEach(b => b.onclick = () => del(b.getAttribute("data-del")));
+  $("#h-prev").onclick = () => { histMonth = addMonth(histMonth, -1); renderHist(); };
+  $("#h-next").onclick = () => { if (histMonth < MONTH) { histMonth = addMonth(histMonth, 1); renderHist(); } };
+  $("#h-next").disabled = histMonth >= MONTH;
+  $("#h-close").onclick = () => $("#hist").close();
 }
 
 function toast(t, label, fn) {
@@ -263,6 +425,7 @@ function askToken(msg = "") { $("#t-msg").textContent = msg; $("#t-input").value
 
 (function init() {
   try { const t = ls.get("gastos.theme"); if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t); } catch {}
+  if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {})); }
   $("#gate-btn").onclick = () => askToken();
   $("#t-cancel").onclick = () => $("#tok").close();
   $("#tok-form").onsubmit = () => { const t = $("#t-input").value.trim(); if (!t) return; token = t; ls.set("hub.token", t); $("#tok").close(); load(); };
