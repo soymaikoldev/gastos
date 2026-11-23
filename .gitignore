@@ -1,0 +1,4 @@
+gastos.json
+*.local
+.vercel
+.DS_Store
