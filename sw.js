@@ -1,9 +1,9 @@
 /* Mis Gastos — service worker: cascarón offline. Nunca cachea datos (GitHub API ni tasa). */
-const C = "gastos-v1";
+const C = "gastos-v2";
 const SHELL = ["./", "./index.html", "./styles.css", "./script.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(C).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()).catch(() => {}));
+  e.waitUntil(caches.open(C).then(c => c.addAll(SHELL.map(p => new Request(p, { cache: "reload" })))).then(() => self.skipWaiting()).catch(() => {}));
 });
 self.addEventListener("activate", e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim()));
