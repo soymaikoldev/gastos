@@ -93,6 +93,7 @@ const addMonth = (ym, n) => { const d = new Date(ym + "-01T00:00:00"); d.setMont
 const PREV_MONTH = addMonth(MONTH, -1);
 const monName = ym => { const s = new Date(ym + "-01T00:00:00").toLocaleDateString("es-VE", { month: "long", year: "numeric" }); return s.charAt(0).toUpperCase() + s.slice(1); };
 const dayName = d => { const s = new Date(d + "T00:00:00").toLocaleDateString("es-VE", { weekday: "short", day: "numeric", month: "short" }); return s.charAt(0).toUpperCase() + s.slice(1); };
+const horaOf = e => e.t ? new Date(e.t).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" }) : "";
 
 /* ---------- GitHub ---------- */
 async function gh(method, body) {
@@ -354,8 +355,9 @@ function itemHtml(e, showDay) {
   const curCls = e.cur === "USD" ? "usd" : "bs";
   const orig = e.cur === "USD" ? money(e.amt) : e.amt.toLocaleString("es-VE") + " Bs";
   const sub = e.cur === "USD" ? "" : "≈ " + money(usd(e));
+  const meta = showDay ? dayName(e.d) + (e.t ? " " + horaOf(e) : "") : horaOf(e);
   return `<div class="row"><span class="row-ic">${catIco(e.cat)}</span>
-    <div class="row-mid"><div class="row-c">${esc(c.label)}${showDay ? `<span class="row-day">${dayName(e.d)}</span>` : ""}</div>${e.note ? `<div class="row-n">${esc(e.note)}</div>` : ""}</div>
+    <div class="row-mid"><div class="row-c">${esc(c.label)}${meta ? `<span class="row-day">${meta}</span>` : ""}</div>${e.note ? `<div class="row-n">${esc(e.note)}</div>` : ""}</div>
     <div class="row-amt ${curCls}">${orig}${sub ? `<span>${sub}</span>` : ""}</div>
     <button class="row-del" data-del="${esc(e.id)}" aria-label="Borrar">${ic("x")}</button></div>`;
 }
@@ -399,7 +401,7 @@ function add() {
   const hint = $("#hint");
   if (!amt || amt <= 0) { hint.textContent = "Marca un monto en el teclado"; hint.style.color = "var(--leak)"; return; }
   if (!catSel) { hint.textContent = "Elige una categoría"; hint.style.color = "var(--leak)"; return; }
-  const e = { id: uid(), d: TODAY, amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note };
+  const e = { id: uid(), d: TODAY, t: Date.now(), amt: Math.round(amt * 100) / 100, cur: curSel, cat: catSel, note };
   if (curSel === "Bs") e.r = data.rate; // congela la tasa del momento
   data.expenses.unshift(e);
   resetAmt();
@@ -409,7 +411,7 @@ function add() {
 
 function quickAdd(id) {
   const q = data.quick.find(x => x.id === id); if (!q) return;
-  const e = { id: uid(), d: TODAY, amt: q.amt, cur: q.cur, cat: q.cat, note: q.note || "" };
+  const e = { id: uid(), d: TODAY, t: Date.now(), amt: q.amt, cur: q.cur, cat: q.cat, note: q.note || "" };
   if (q.cur === "Bs") e.r = data.rate;
   data.expenses.unshift(e);
   save(); render();
